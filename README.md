@@ -149,7 +149,7 @@ We welcome contributions! If you'd like to contribute, please follow these steps
 
 ## License
 
-This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
+This project is licensed under the MIT License. See the [LICENSE](LICENSE.md) file for details.
 
 ---
 
