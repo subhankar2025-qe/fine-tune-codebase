@@ -102,7 +102,7 @@ def load_and_tokenize_dataset(output_file, model_name):
         tokenized_dataset = load_from_disk("tokenized_dataset")
     else:
         logger.info("Tokenizing dataset...")
-        dataset = load_dataset("text", data_files={"train": output_file}, streaming=True)
+        dataset = load_dataset("text", data_files={"train": output_file})
         dataset = dataset["train"].train_test_split(test_size=0.1)  # 90% train, 10% validation
 
         tokenizer = AutoTokenizer.from_pretrained(model_name)
