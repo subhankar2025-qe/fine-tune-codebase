@@ -205,9 +205,9 @@ def fine_tune_model(
         fp16=fp16,
 
         # — EarlyStopping settings —
-        load_best_model_at_end=True,
-        metric_for_best_model="perplexity",
-        greater_is_better=False,
+        # load_best_model_at_end=True,
+        # metric_for_best_model="perplexity",
+        # greater_is_better=False,
 
         save_strategy="epoch",
         resume_from_checkpoint=resume_from_checkpoint,
