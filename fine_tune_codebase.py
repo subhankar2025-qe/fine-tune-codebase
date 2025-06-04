@@ -191,7 +191,7 @@ def fine_tune_model(
         save_steps=10_000,
         save_total_limit=2,
         logging_dir="./logs",
-        logging_steps=500,
+        logging_steps=10,
         eval_strategy="epoch",
         fp16=fp16,
 
