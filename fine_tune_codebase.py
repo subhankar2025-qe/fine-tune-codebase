@@ -246,7 +246,7 @@ def main():
     parser = argparse.ArgumentParser(description="Fine-tune a language model on a codebase.")
     parser.add_argument("--input_dir", type=str, required=True, help="Directory containing the codebase files.")
     parser.add_argument("--output_file", type=str, default="codebase.txt", help="Output file for the concatenated dataset.")
-    parser.add_argument("--model_name", type=str, default="codellama/CodeLlama-7b-hf", help="Base model to fine-tune.")
+    parser.add_argument("--model_name", type=str, default="codellama/CodeLlama-7b-Instruct-hf", help="Base model to fine-tune.")
     parser.add_argument("--output_dir", type=str, default="./fine_tuned_model", help="Directory to save the fine-tuned model.")
     parser.add_argument("--test_prompt", type=str, default="// Create a new function", help="Prompt to test the fine-tuned model.")
     parser.add_argument("--ignore_file", type=str, default=".codeignore", help="File containing ignore patterns.")
