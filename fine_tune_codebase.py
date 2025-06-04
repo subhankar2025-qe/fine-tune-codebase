@@ -116,15 +116,24 @@ def load_and_tokenize_dataset(output_file, model_name):
             else:
                 tokenizer.add_special_tokens({'pad_token': '[PAD]'})
 
-        def tokenize_function(examples):
-            return tokenizer(
+        def tokenize_and_add_labels(examples):
+            tokenized = tokenizer(
                 examples["text"],
                 truncation=True,
                 padding="max_length",
                 max_length=512,
             )
+            # Copy input_ids into labels so that Trainer can compute loss/metrics
+            tokenized["labels"] = tokenized["input_ids"].copy()
+            return tokenized
 
-        tokenized_dataset = dataset.map(tokenize_function, batched=True, remove_columns=["text"])
+
+        tokenized_dataset = dataset.map(
+            tokenize_and_add_labels,
+            batched=True,
+            remove_columns=["text"]
+        )
+
         tokenized_dataset.save_to_disk("tokenized_dataset")
 
     return tokenized_dataset, tokenizer
