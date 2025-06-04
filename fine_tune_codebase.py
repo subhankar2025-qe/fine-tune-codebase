@@ -12,6 +12,7 @@ from transformers import (
     pipeline,
     EarlyStoppingCallback,
     BitsAndBytesConfig,
+    DataCollatorForLanguageModeling,
 )
 from datasets import load_dataset, load_from_disk
 import evaluate
@@ -128,31 +129,59 @@ def load_and_tokenize_dataset(output_file, model_name):
 
     return tokenized_dataset, tokenizer
 # Fine-tune the model with LoRA
-def fine_tune_model(tokenized_dataset, tokenizer, model_name, output_dir, learning_rate, batch_size, num_epochs, early_stopping_patience, gradient_accumulation_steps, fp16, resume_from_checkpoint, tensorboard, quantize):
-    """
-    Fine-tunes the model using the tokenized dataset with LoRA.
-    """
+def fine_tune_model(
+    tokenized_dataset,
+    tokenizer,
+    model_name,
+    output_dir,
+    learning_rate,
+    batch_size,
+    num_epochs,
+    early_stopping_patience,
+    gradient_accumulation_steps,
+    fp16,
+    resume_from_checkpoint,
+    tensorboard,
+    quantize,
+):
     logger.info("Loading base model...")
 
     # Quantization (optional)
     quantization_config = None
     if quantize:
-        quantization_config = BitsAndBytesConfig(
-            load_in_8bit=True,  # Quantize to 8-bit
-        )
+        quantization_config = BitsAndBytesConfig(load_in_8bit=True)
 
-    model = AutoModelForCausalLM.from_pretrained(model_name, quantization_config=quantization_config)
+    # 1) Load the model
+    model = AutoModelForCausalLM.from_pretrained(
+        model_name, quantization_config=quantization_config
+    )
 
-    # Apply LoRA
+    # 2) Make sure tokenizer has a pad_token
+    if tokenizer.pad_token is None:
+        if tokenizer.eos_token is not None:
+            tokenizer.pad_token = tokenizer.eos_token
+        else:
+            # Add a new pad token "[PAD]"
+            tokenizer.add_special_tokens({"pad_token": "[PAD]"})
+        # Since we just added a token, resize model embeddings
+        model.resize_token_embeddings(len(tokenizer))
+
+    # 3) Apply LoRA
     lora_config = LoraConfig(
-        r=8,  # Rank of the low-rank matrices
-        lora_alpha=32,  # Scaling factor
-        target_modules=["q_proj", "v_proj"],  # Target layers
+        r=8,
+        lora_alpha=32,
+        target_modules=["q_proj", "v_proj"],
         lora_dropout=0.1,
     )
     model = get_peft_model(model, lora_config)
 
-    # Set up training arguments
+    # 4) Create the data collator (now that pad_token exists)
+    data_collator = DataCollatorForLanguageModeling(
+        tokenizer=tokenizer,
+        mlm=False,  # causal LM → labels = input_ids
+    )
+
+    # 5) Set up TrainingArguments (including early‐stop fields)
     training_args = TrainingArguments(
         output_dir=output_dir,
         per_device_train_batch_size=batch_size,
@@ -164,38 +193,29 @@ def fine_tune_model(tokenized_dataset, tokenizer, model_name, output_dir, learni
         logging_dir="./logs",
         logging_steps=500,
         eval_strategy="epoch",
-        fp16=fp16,  # Mixed precision
+        fp16=fp16,
 
-        # —————————————— New fields for EarlyStopping ——————————————
-        load_best_model_at_end=True,            # Reload best checkpoint at end
-        metric_for_best_model="perplexity",    # Which metric to monitor
-        greater_is_better=False,               # Lower perplexity is better
+        # — EarlyStopping settings —
+        load_best_model_at_end=True,
+        metric_for_best_model="perplexity",
+        greater_is_better=False,
 
-        save_strategy="epoch",                  # Save a checkpoint at each epoch
+        save_strategy="epoch",
         resume_from_checkpoint=resume_from_checkpoint,
         report_to="tensorboard" if tensorboard else None,
     )
 
-    # Load evaluation metrics
+    # 6) Metrics
     metric = evaluate.load("perplexity")
     bleu = evaluate.load("bleu")
-
     def compute_metrics(eval_pred):
         logits, labels = eval_pred
-        # Compute predictions by taking argmax over logits
-        predictions = np.argmax(logits, axis=-1)
+        preds = np.argmax(logits, axis=-1)
+        perp = metric.compute(predictions=preds, references=labels)
+        bleu_score = bleu.compute(predictions=preds, references=labels)
+        return {"perplexity": perp["perplexity"], "bleu": bleu_score["bleu"]}
 
-        # For perplexity, the library expects: predictions + references
-        perp = metric.compute(predictions=predictions, references=labels)
-        bleu_score = bleu.compute(predictions=predictions, references=labels)
-
-        return {
-            "perplexity": perp["perplexity"],
-            "bleu": bleu_score["bleu"],
-        }
-
-    # Initialize the Trainer
-    logger.info("Starting fine-tuning...")
+    # 7) Trainer
     callbacks = []
     if early_stopping_patience > 0:
         callbacks.append(EarlyStoppingCallback(early_stopping_patience=early_stopping_patience))
@@ -205,11 +225,12 @@ def fine_tune_model(tokenized_dataset, tokenizer, model_name, output_dir, learni
         args=training_args,
         train_dataset=tokenized_dataset["train"],
         eval_dataset=tokenized_dataset["test"],
+        data_collator=data_collator,
         compute_metrics=compute_metrics,
         callbacks=callbacks,
     )
 
-    # Start training
+    # 8) Train & save
     trainer.train()
     trainer.save_model(output_dir)
     tokenizer.save_pretrained(output_dir)
