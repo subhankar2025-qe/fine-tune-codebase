@@ -237,6 +237,7 @@ def fine_tune_model(
         data_collator=data_collator,
         compute_metrics=compute_metrics,
         callbacks=callbacks,
+        label_names=["labels"],
     )
 
     # 8) Train & save
