@@ -97,6 +97,7 @@ def load_and_tokenize_dataset(output_file, model_name):
     """
     Loads the dataset and tokenizes it using the model's tokenizer.
     """
+    tokenizer = AutoTokenizer.from_pretrained(model_name)
     if os.path.exists("tokenized_dataset"):
         logger.info("Loading tokenized dataset from disk...")
         tokenized_dataset = load_from_disk("tokenized_dataset")
@@ -105,14 +106,27 @@ def load_and_tokenize_dataset(output_file, model_name):
         dataset = load_dataset("text", data_files={"train": output_file})
         dataset = dataset["train"].train_test_split(test_size=0.1)  # 90% train, 10% validation
 
-        tokenizer = AutoTokenizer.from_pretrained(model_name)
+        
+
+        # Fix: Add pad_token if missing
+        if tokenizer.pad_token is None:
+            if tokenizer.eos_token:
+                tokenizer.pad_token = tokenizer.eos_token
+            else:
+                tokenizer.add_special_tokens({'pad_token': '[PAD]'})
+
         def tokenize_function(examples):
-            return tokenizer(examples["text"], truncation=True, padding="max_length", max_length=512)
+            return tokenizer(
+                examples["text"],
+                truncation=True,
+                padding="max_length",
+                max_length=512,
+            )
 
         tokenized_dataset = dataset.map(tokenize_function, batched=True, remove_columns=["text"])
         tokenized_dataset.save_to_disk("tokenized_dataset")
-    return tokenized_dataset, tokenizer
 
+    return tokenized_dataset, tokenizer
 # Fine-tune the model with LoRA
 def fine_tune_model(tokenized_dataset, tokenizer, model_name, output_dir, learning_rate, batch_size, num_epochs, early_stopping_patience, gradient_accumulation_steps, fp16, resume_from_checkpoint, tensorboard, quantize):
     """
@@ -149,11 +163,17 @@ def fine_tune_model(tokenized_dataset, tokenizer, model_name, output_dir, learni
         save_total_limit=2,
         logging_dir="./logs",
         logging_steps=500,
-        evaluation_strategy="epoch",
+        eval_strategy="epoch",
         fp16=fp16,  # Mixed precision
-        save_strategy="epoch",  # Save checkpoints
-        resume_from_checkpoint=resume_from_checkpoint,  # Resume training
-        report_to="tensorboard" if tensorboard else None,  # TensorBoard logging
+
+        # —————————————— New fields for EarlyStopping ——————————————
+        load_best_model_at_end=True,            # Reload best checkpoint at end
+        metric_for_best_model="perplexity",    # Which metric to monitor
+        greater_is_better=False,               # Lower perplexity is better
+
+        save_strategy="epoch",                  # Save a checkpoint at each epoch
+        resume_from_checkpoint=resume_from_checkpoint,
+        report_to="tensorboard" if tensorboard else None,
     )
 
     # Load evaluation metrics
@@ -162,10 +182,17 @@ def fine_tune_model(tokenized_dataset, tokenizer, model_name, output_dir, learni
 
     def compute_metrics(eval_pred):
         logits, labels = eval_pred
+        # Compute predictions by taking argmax over logits
         predictions = np.argmax(logits, axis=-1)
-        perplexity = metric.compute(predictions=predictions, references=labels)
+
+        # For perplexity, the library expects: predictions + references
+        perp = metric.compute(predictions=predictions, references=labels)
         bleu_score = bleu.compute(predictions=predictions, references=labels)
-        return {"perplexity": perplexity["perplexity"], "bleu": bleu_score["bleu"]}
+
+        return {
+            "perplexity": perp["perplexity"],
+            "bleu": bleu_score["bleu"],
+        }
 
     # Initialize the Trainer
     logger.info("Starting fine-tuning...")
