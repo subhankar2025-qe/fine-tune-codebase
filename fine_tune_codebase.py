@@ -251,7 +251,7 @@ def main():
     parser.add_argument("--test_prompt", type=str, default="// Create a new function", help="Prompt to test the fine-tuned model.")
     parser.add_argument("--ignore_file", type=str, default=".codeignore", help="File containing ignore patterns.")
     parser.add_argument("--file_extensions", type=str, nargs="+", default=None, help="File extensions to include (e.g., .py .js).")
-    parser.add_argument("--learning_rate", type=float, default=5e-5, help="Learning rate for training.")
+    parser.add_argument("--learning_rate", type=float, default=2e-4, help="Learning rate for training.")
     parser.add_argument("--batch_size", type=int, default=4, help="Batch size for training.")
     parser.add_argument("--num_epochs", type=int, default=3, help="Number of training epochs.")
     parser.add_argument("--early_stopping_patience", type=int, default=3, help="Number of epochs to wait before early stopping.")
