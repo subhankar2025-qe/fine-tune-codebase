@@ -189,7 +189,7 @@ def fine_tune_model(
         tokenizer=tokenizer,
         mlm=False,  # causal LM → labels = input_ids
     )
-
+    print(tokenized_dataset["train"][0], tokenized_dataset["test"][0])  # Debugging line to check tokenized dataset
     # 5) Set up TrainingArguments (including early‐stop fields)
     training_args = TrainingArguments(
         output_dir=output_dir,
@@ -237,7 +237,6 @@ def fine_tune_model(
         data_collator=data_collator,
         compute_metrics=compute_metrics,
         callbacks=callbacks,
-        label_names=["labels"],
     )
 
     # 8) Train & save
